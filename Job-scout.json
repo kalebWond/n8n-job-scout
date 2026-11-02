@@ -1,0 +1,511 @@
+{
+  "name": "Job scout",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        144
+      ],
+      "id": "4e26a6a2-fd70-456f-a390-9aa5ed451aba",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://remotive.com/api/remote-jobs",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "software-dev"
+            },
+            {
+              "name": "limit",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "e35f5318-5048-4ad7-9a90-4c33b99cda16",
+      "name": "Get jobs",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "jobs",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "f3593274-71ef-4332-9758-0cf0afda4b9f",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "ae81b5c0-a32c-4d03-a84e-f3dbde7ca1d5",
+              "leftValue": "={{ $json.keywordScore }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "a4995b35-5381-4bad-a72f-ca39daf376ef",
+              "leftValue": "={{ $json.location.toLowerCase() }}",
+              "rightValue": "=worldwide|africa|emea",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.4,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "d4978a0d-8bc6-4811-803d-aff2ef29c14e",
+      "name": "Worldwide match"
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = [\n  // core stack\n  \"typescript\", \"react\", \"next.js\", \"node.js\", \"express\", \"tailwind\",\n  \"postgresql\", \"supabase\",\n  \"websocket\", \"kafka\", \"golang\",\n  // delivery\n  \"docker\", \"aws\",\n  // front-end state\n  \"firebase\", // AI\n  \"claude\", \"automation\",\n];\n\nreturn $input.all().map(item => {\n  const j = item.json;\n  const text = `${j.title} ${(j.tags || []).join(' ')}`.toLowerCase();\n  const hits = keywords.filter(k => text.includes(k));\n\n  return {\n    json: {\n      title: j.title,\n      company: j.company_name,\n      url: j.url,\n      location: j.candidate_required_location,\n      salary: j.salary || 'not listed',\n      posted: j.publication_date,\n      keywordHits: hits.join(', '),\n      keywordScore: hits.length,\n      // strip HTML so the AI gets clean text\n      summary: (j.description || '')\n        .replace(/<[^>]+>/g, ' ')\n        .replace(/\\s+/g, ' ')\n        .slice(0, 1500),\n    },\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "e083a90a-2fdd-4fa5-a940-bfb5fecb2472",
+      "name": "Score jobs"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You screen remote jobs for a software engineer based in Addis Ababa, Ethiopia.\nTheir stack: typescript, react, next.js, node.js, express, tailwind, postgresql, supabase, websocket, kafka, golang, docker, firebase, aws, claude, automation.\n\nRate this job from 1 (poor fit) to 10 (excellent fit).\nMark it 1 if it clearly cannot hire from Africa.\n\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation rules: {{ $json.location }}\nDescription: {{ $json.summary }}",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1312,
+        16
+      ],
+      "id": "9ff0867e-c0d2-4855-9439-8d005712746f",
+      "name": "AI rating"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1248,
+        224
+      ],
+      "id": "cf20dea5-ba19-4e42-82fc-9bfafb92c9c4",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "RiQfPM3opfuWYeX9",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"fit\": 8,\n  \"reason\": \"Backend Node.js role, worldwide hiring, async team\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1456,
+        224
+      ],
+      "id": "05b54678-bcd3-4b60-b500-55dafffe1460",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "eaea195b-7959-4c1e-a3da-11d1d39e354f",
+              "leftValue": "={{ $json.output.fit }}",
+              "rightValue": 7,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.4,
+      "position": [
+        1680,
+        16
+      ],
+      "id": "45e0e8fb-79a8-4559-9273-32f701b0109f",
+      "name": "Fit 7+"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5dd1620a-2d19-4429-92b0-9bd83123ea2a",
+              "name": "=title",
+              "value": "={{ $('Score jobs').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "82abec42-ae01-49bd-951e-90f45539585a",
+              "name": "=company",
+              "value": "={{ $('Score jobs').item.json.company }}",
+              "type": "string"
+            },
+            {
+              "id": "53305d02-d32f-4acc-8ab5-4c4fdbb188b1",
+              "name": "=fit",
+              "value": "={{ $json.output.fit }}",
+              "type": "number"
+            },
+            {
+              "id": "3d106ff6-3ef5-424b-819f-ac40d0b499ac",
+              "name": "=reason",
+              "value": "={{ $json.output.reason }}",
+              "type": "string"
+            },
+            {
+              "id": "52ad595a-0c5d-41a0-8e51-eeb1988c2a01",
+              "name": "=url",
+              "value": "={{ $('Score jobs').item.json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "7e65e9d4-d9a3-4cca-ad3e-438a2e11fb70",
+              "name": "=location",
+              "value": "={{ $('Score jobs').item.json.location }}",
+              "type": "string"
+            },
+            {
+              "id": "a28a2124-4769-4e19-9f6d-da169be0359a",
+              "name": "=salary",
+              "value": "={{ $('Score jobs').item.json.salary }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1904,
+        16
+      ],
+      "id": "194d52f5-bd10-4c67-a27d-1e1de916d038",
+      "name": "Shape row"
+    },
+    {
+      "parameters": {
+        "chatId": "372709315",
+        "text": "={{ $json.message }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "Open job ↗",
+                    "additionalFields": {
+                      "url": "={{ $json.url }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2352,
+        16
+      ],
+      "id": "76246121-273b-4902-aa5c-0d859890375b",
+      "name": "Send a text message",
+      "webhookId": "54e61dd1-23d8-4ad7-adb2-9e871227040f",
+      "credentials": {
+        "telegramApi": {
+          "id": "2UH3LOITlPmqU6tY",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 13,
+              "triggerAtMinute": 38
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        -160
+      ],
+      "id": "afec7777-6839-414a-be66-a07aa76cd603",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "973c9be2-5363-4fdf-8960-12c16f2d7ff1",
+      "name": "Remove Duplicates",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Escape characters that would break Telegram's HTML formatting\nconst esc = s => String(s ?? '')\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst fit = Math.max(0, Math.min(10, Number($json.fit) || 0));\nconst badge = fit >= 9 ? '🟢' : fit >= 7 ? '🟡' : '⚪';\nconst bar = '■'.repeat(fit) + '□'.repeat(10 - fit);\n\nconst message = [\n  `${badge} <b>${fit}/10 · ${esc($json.title)}</b>`,\n  `<i>${esc($json.company)}</i>`,\n  bar,\n  '',\n  `📍 ${esc($json.location)}   💰 ${esc($json.salary)}`,\n  '',\n  `<blockquote>${esc($json.reason)}</blockquote>`,\n].join('\\n');\n\nreturn { json: { ...$json, message } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2128,
+        16
+      ],
+      "id": "e18c8644-7134-4c42-a9ab-95e11eb0398c",
+      "name": "Format message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get jobs": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score jobs": {
+      "main": [
+        [
+          {
+            "node": "Worldwide match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worldwide match": {
+      "main": [
+        [
+          {
+            "node": "AI rating",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI rating",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI rating",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI rating": {
+      "main": [
+        [
+          {
+            "node": "Fit 7+",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fit 7+": {
+      "main": [
+        [
+          {
+            "node": "Shape row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape row": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Score jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Africa/Addis_Ababa",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "7984da2d-8372-4479-82c7-233e3be1a1fa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "41aaefe185d3e5c139d44c42096d913ad040d950662cb9ad81913cb837ddc098"
+  },
+  "nodeGroups": [],
+  "id": "OhZ8zohwkcx1cPo6",
+  "tags": []
+}
